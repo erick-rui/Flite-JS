@@ -17,7 +17,7 @@ A lightweight, configurable JavaScript library for displaying Flite events on Sq
 The easiest way - just add data attributes to a div!
 
 ```html
-<div data-api="https://api-staging.flite.city/api/geteventsbyhost/your-host-name"></div>
+<div class="flite-events" data-api="https://api-staging.flite.city/api/geteventsbyhost/your-host-name"></div>
 <script src="https://cdn.jsdelivr.net/gh/YOUR-USERNAME/YOUR-REPO@main/flite-events-loader.js"></script>
 ```
 
