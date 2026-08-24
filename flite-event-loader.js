@@ -1,13 +1,22 @@
 // Flite Events Integration Script
-// Version 1.1.0
+// Version 2.0.0
 // Usage: Initialize with FliteEvents.init() OR use data attributes on div
+//
+// v2.0.0: Migrated to Flite's getEventsByOrgPagination endpoint. Upcoming
+// and past events are now two separate paginated requests (organizationId
+// + type + page + limit) instead of one call returning both lists. If any
+// embed overrides data-api with a full old-style endpoint URL, update that
+// markup too, apiEndpoint is now treated as a base URL with query params
+// appended, not a complete request URL.
 
-(function() {
+(function () {
   'use strict';
 
   // Default configuration
   const DEFAULT_CONFIG = {
-    apiEndpoint: 'https://api-staging.flite.city/api/geteventsbyhost/sway-hospitality',
+    apiEndpoint: 'https://api-autoscale.fliteapi.city/api/getEventsByOrgPagination',
+    organizationId: 'x',
+    pageSize: 6,
     eventDetailUrlPattern: 'https://flite.city/e/{slug}',
     cardsPerRow: {
       desktop: 3,
@@ -30,23 +39,34 @@
     },
     containerId: 'events-section',
     showPastByDefault: false,
-    enablePastEvents: true
+    enablePastEvents: false
   };
 
   // Parse data attributes from a container element
   function parseDataAttributes(element) {
     const config = {};
-    
-    // Required: API endpoint
+
+    // Required: organization id
+    if (!element.dataset.org) {
+      console.error("Missing Organization ID")
+    }
+    config.organizationId = element.dataset.org;
+
     if (element.dataset.api) {
       config.apiEndpoint = element.dataset.api;
     }
-    
+
+
+    // Optional: page size for the paginated events endpoint
+    if (element.dataset.pageSize) {
+      config.pageSize = parseInt(element.dataset.pageSize, 10);
+    }
+
     // Optional: Event detail URL pattern
     if (element.dataset.detailUrl) {
       config.eventDetailUrlPattern = element.dataset.detailUrl;
     }
-    
+
     // Optional: Cards per row settings
     if (element.dataset.cardsDesktop || element.dataset.cardsTablet || element.dataset.cardsMobile) {
       config.cardsPerRow = {};
@@ -60,11 +80,11 @@
         config.cardsPerRow.mobile = parseInt(element.dataset.cardsMobile, 10);
       }
     }
-    
+
     // Optional: Headings
-    if (element.dataset.upcomingHeading || element.dataset.pastHeading || 
-        element.dataset.noUpcomingText || element.dataset.noPastText ||
-        element.dataset.noEventsText || element.dataset.errorText) {
+    if (element.dataset.upcomingHeading || element.dataset.pastHeading ||
+      element.dataset.noUpcomingText || element.dataset.noPastText ||
+      element.dataset.noEventsText || element.dataset.errorText) {
       config.headings = {};
       if (element.dataset.upcomingHeading) {
         config.headings.upcoming = element.dataset.upcomingHeading;
@@ -85,10 +105,10 @@
         config.headings.error = element.dataset.errorText;
       }
     }
-    
+
     // Optional: Button labels
     if (element.dataset.showPastButton || element.dataset.hidePastButton ||
-        element.dataset.viewDetailsButton || element.dataset.viewHistoryButton) {
+      element.dataset.viewDetailsButton || element.dataset.viewHistoryButton) {
       config.buttons = {};
       if (element.dataset.showPastButton) {
         config.buttons.showPast = element.dataset.showPastButton;
@@ -103,17 +123,17 @@
         config.buttons.viewHistory = element.dataset.viewHistoryButton;
       }
     }
-    
+
     // Optional: Show past events by default
     if (element.dataset.showPast !== undefined) {
       config.showPastByDefault = element.dataset.showPast === 'true';
     }
-    
+
     // Optional: Enable/disable past events section
     if (element.dataset.pastEvents !== undefined) {
       config.enablePastEvents = element.dataset.pastEvents !== 'false';
     }
-    
+
     return config;
   }
 
@@ -135,9 +155,9 @@
 
   // Main initialization function
   window.FliteEvents = {
-    init: function(userConfig) {
+    init: function (userConfig) {
       const config = Object.assign({}, DEFAULT_CONFIG, userConfig);
-      
+
       // Merge nested objects properly
       if (userConfig.cardsPerRow) {
         config.cardsPerRow = Object.assign({}, DEFAULT_CONFIG.cardsPerRow, userConfig.cardsPerRow);
@@ -156,7 +176,7 @@
       }
     },
 
-    render: function(userConfig) {
+    render: function (userConfig) {
       // Merge with defaults
       const config = Object.assign({}, DEFAULT_CONFIG, userConfig);
       if (userConfig.cardsPerRow) {
@@ -185,14 +205,14 @@
 
       // Create upcoming events container
       const upcomingEventsContainer = this.createEventsGrid('upcoming-events', config);
-      
+
       // Create past events container (only if enabled)
       let pastEventsContainer = null;
       let toggleButton = null;
-      
+
       if (config.enablePastEvents) {
         pastEventsContainer = this.createEventsGrid('past-events', config);
-        
+
         // Create heading for past events
         const pastHeading = document.createElement("h2");
         pastHeading.textContent = config.headings.past;
@@ -224,7 +244,7 @@
       this.setupResponsiveGrid(config, upcomingEventsContainer, pastEventsContainer);
     },
 
-    createEventsGrid: function(className, config) {
+    createEventsGrid: function (className, config) {
       const container = document.createElement("div");
       container.className = `events-grid ${className}`;
       container.style.display = "grid";
@@ -237,7 +257,12 @@
       return container;
     },
 
-    createEventCard: function(event, isPast, config) {
+    createEventCard: function (event, isPast, config) {
+      const eventWrapper = document.createElement("a")
+      const url = config.eventDetailUrlPattern.replace('{slug}', event.slug);
+      eventWrapper.href = url
+
+
       const eventCard = document.createElement("div");
       eventCard.className = isPast ? "event-card past-event" : "event-card";
       eventCard.style.border = "1px solid #333";
@@ -248,8 +273,8 @@
       eventCard.style.transition = "transform 0.3s ease, box-shadow 0.3s ease";
 
       if (isPast) {
-        eventCard.style.opacity = "0.6";
-        eventCard.style.filter = "grayscale(80%)";
+        eventCard.style.opacity = "0.8";
+        eventCard.style.filter = "grayscale(90%)";
       }
 
       // Add event image if available
@@ -258,7 +283,7 @@
         eventImage.src = event.hostFlyer[0];
         eventImage.alt = event.eventName;
         eventImage.style.width = "100%";
-        eventImage.style.height = "200px";
+        eventImage.style.height = "30vh";
         eventImage.style.objectFit = "cover";
         eventCard.appendChild(eventImage);
       }
@@ -266,6 +291,8 @@
       // Add event details
       const eventDetails = document.createElement("div");
       eventDetails.className = "event-details";
+      eventDetails.style.height = "12vh";
+      eventDetails.style.minHeight = "100px"
       eventDetails.style.padding = "15px";
 
       // Event name
@@ -273,6 +300,9 @@
       eventName.textContent = event.eventName;
       eventName.style.margin = "0 0 10px 0";
       eventName.style.fontSize = "18px";
+      eventName.style.whiteSpace = "nowrap"
+      eventName.style.overflow = "hidden"
+      eventName.style.textOverflow = "ellipsis"
       eventName.style.color = isPast ? "#aaa" : (event.color || "#fff");
       eventDetails.appendChild(eventName);
 
@@ -280,9 +310,9 @@
       const eventDateTime = document.createElement("p");
       const startDate = new Date(event.startDateTime);
       const options = {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
+        weekday: 'short',
+        year: '2-digit',
+        month: '2-digit',
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit'
@@ -304,34 +334,19 @@
 
       // Location
       const eventLocation = document.createElement("p");
-      eventLocation.textContent = event.venueLocation;
+      eventLocation.textContent = event.city;
       eventLocation.style.margin = "5px 0 15px 0";
       eventLocation.style.fontSize = "14px";
       eventLocation.style.color = "#999";
       eventDetails.appendChild(eventLocation);
 
-      // View details button
-      const viewButton = document.createElement("a");
-      const detailUrl = config.eventDetailUrlPattern.replace('{slug}', event.slug);
-      viewButton.href = detailUrl;
-      viewButton.textContent = isPast ? config.buttons.viewHistory : config.buttons.viewDetails;
-      viewButton.style.display = "inline-block";
-      viewButton.style.padding = "8px 16px";
-      const buttonBgColor = isPast ? "#555" : (event.color || "#007bff");
-      viewButton.style.backgroundColor = buttonBgColor;
-      viewButton.style.color = this.getContrastColor(buttonBgColor);
-      viewButton.style.textDecoration = "none";
-      viewButton.style.borderRadius = "4px";
-      viewButton.style.fontWeight = "bold";
-      viewButton.style.marginTop = "10px";
-      viewButton.style.boxShadow = "0 2px 5px rgba(0,0,0,0.3)";
-      eventDetails.appendChild(viewButton);
-
       eventCard.appendChild(eventDetails);
-      return eventCard;
+
+      eventWrapper.appendChild(eventCard)
+      return eventWrapper;
     },
 
-    getContrastColor: function(hexColor) {
+    getContrastColor: function (hexColor) {
       let color = hexColor.replace('#', '');
       if (color.length === 3) {
         color = color.split('').map(c => c + c).join('');
@@ -343,54 +358,67 @@
       return luminance > 0.8 ? '#000' : '#fff';
     },
 
-    fetchEvents: function(config, upcomingContainer, pastContainer) {
-      fetch(config.apiEndpoint)
-        .then(response => response.json())
-        .then(data => {
-          if (data.success && data.data) {
-            const now = new Date();
-            let upcomingEvents = [];
-            let pastEvents = [];
+    fetchEvents: async function (config, upcomingContainer, pastContainer) {
+      try {
+        const upcomingEvents = await this.fetchAllPages(config, 'upcoming');
+        let pastEvents = [];
+        if (config.enablePastEvents) {
+          pastEvents = await this.fetchAllPages(config, 'past');
+        }
 
-            if (data.data.upcomingEvents) {
-              upcomingEvents = data.data.upcomingEvents.filter(event =>
-                new Date(event.endDateTime) >= now
-              );
-            }
+        upcomingEvents.sort((a, b) =>
+          new Date(a.startDateTime) - new Date(b.startDateTime)
+        );
 
-            if (config.enablePastEvents) {
-              if (data.data.pastEvents) {
-                pastEvents = data.data.pastEvents;
-              } else if (data.data.upcomingEvents) {
-                pastEvents = data.data.upcomingEvents.filter(event =>
-                  new Date(event.endDateTime) < now
-                );
-              }
-            }
+        pastEvents.sort((a, b) =>
+          new Date(b.startDateTime) - new Date(a.startDateTime)
+        );
 
-            upcomingEvents.sort((a, b) =>
-              new Date(a.startDateTime) - new Date(b.startDateTime)
-            );
-
-            pastEvents.sort((a, b) =>
-              new Date(b.startDateTime) - new Date(a.startDateTime)
-            );
-
-            this.displayEvents(upcomingEvents, upcomingContainer, false, config);
-            if (config.enablePastEvents && pastContainer) {
-              this.displayEvents(pastEvents, pastContainer, true, config);
-            }
-          } else {
-            this.displayNoEvents(upcomingContainer, config.headings.noEvents);
-          }
-        })
-        .catch(error => {
-          console.error('FliteEvents: Error fetching events:', error);
-          this.displayError(upcomingContainer, config.headings.error);
-        });
+        this.displayEvents(upcomingEvents, upcomingContainer, false, config);
+        if (config.enablePastEvents && pastContainer) {
+          this.displayEvents(pastEvents, pastContainer, true, config);
+        }
+      } catch (error) {
+        console.error('FliteEvents: Error fetching events:', error);
+        this.displayError(upcomingContainer, config.headings.error);
+      }
     },
 
-    displayEvents: function(events, container, isPast, config) {
+    // Loops the paginated endpoint for one type ('upcoming' or 'past') until
+    // the API reports no more pages (data.pagination.hasMore), and returns
+    // the combined list of event objects for that type.
+    fetchAllPages: async function (config, type) {
+      const events = [];
+      let page = 1;
+
+      while (true) {
+        const params = new URLSearchParams({
+          organizationId: config.organizationId,
+          page: page,
+          type: type,
+          limit: config.pageSize
+        });
+        const response = await fetch(`${config.apiEndpoint}?${params}`);
+        const payload = await response.json();
+
+        if (!payload.success || !payload.data) {
+          break;
+        }
+
+        const batch = payload.data.events || [];
+        events.push(...batch);
+
+        const pagination = payload.data.pagination || {};
+        if (!pagination.hasMore || batch.length === 0) {
+          break;
+        }
+        page += 1;
+      }
+
+      return events;
+    },
+
+    displayEvents: function (events, container, isPast, config) {
       if (events.length > 0) {
         events.forEach(event => {
           const eventCard = this.createEventCard(event, isPast, config);
@@ -402,7 +430,7 @@
       }
     },
 
-    displayMessage: function(container, message, color) {
+    displayMessage: function (container, message, color) {
       const messageEl = document.createElement("p");
       messageEl.textContent = message;
       messageEl.style.textAlign = "center";
@@ -413,15 +441,15 @@
       container.appendChild(messageEl);
     },
 
-    displayNoEvents: function(container, message) {
+    displayNoEvents: function (container, message) {
       this.displayMessage(container, message, "#ccc");
     },
 
-    displayError: function(container, message) {
+    displayError: function (container, message) {
       this.displayMessage(container, message, "#ff5555");
     },
 
-    createToggleButton: function(config, pastContainer) {
+    createToggleButton: function (config, pastContainer) {
       const toggleButton = document.createElement("button");
       toggleButton.textContent = config.buttons.showPast;
       toggleButton.style.display = "block";
@@ -457,7 +485,7 @@
       return toggleButton;
     },
 
-    setupResponsiveGrid: function(config, upcomingContainer, pastContainer) {
+    setupResponsiveGrid: function (config, upcomingContainer, pastContainer) {
       const adjustGrid = () => {
         const width = window.innerWidth;
         let columns;
@@ -481,7 +509,7 @@
       window.addEventListener('resize', adjustGrid);
     },
 
-    addStyles: function() {
+    addStyles: function () {
       const style = document.createElement('style');
       style.id = 'flite-events-styles';
       style.textContent = `
@@ -490,7 +518,9 @@
           color: #fff;
           padding: 20px 0;
         }
-
+        a {
+          text-decoration: none;
+        }
         .events-grid {
           margin: 0 auto;
           max-width: 1200px;
